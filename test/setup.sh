@@ -2,14 +2,53 @@
 # setup.sh — install WP core + a set of common plugins in each test container
 # Run once after: podman compose up -d
 #
-# Plugins installed by default (representative mix with known vulns in the wild):
-#   woocommerce, elementor, contact-form-7, yoast-seo, wordfence
-# Override: PLUGINS="slug1 slug2 ..." ./setup.sh
+# Override plugin list: PLUGINS="slug1 slug2 ..." ./setup.sh
 
 set -euo pipefail
 
 COMPOSE_CMD="${COMPOSE_CMD:-podman compose}"
-PLUGINS="${PLUGINS:-woocommerce elementor contact-form-7 wordpress-seo wordfence}"
+
+# ~30 widely-deployed plugins across common categories, all with CVE history
+PLUGINS="${PLUGINS:-
+  woocommerce
+  easy-digital-downloads
+  the-events-calendar
+
+  elementor
+  beaver-builder-lite-version
+
+  wordpress-seo
+  all-in-one-seo-pack
+  rank-math-seo
+
+  wordfence
+  all-in-one-wp-security-and-firewall
+  sucuri-scanner
+  really-simple-ssl
+
+  contact-form-7
+  wpforms-lite
+  ninja-forms
+  forminator
+
+  jetpack
+  akismet
+  classic-editor
+  advanced-custom-fields
+  wp-mail-smtp
+  redirection
+
+  updraftplus
+  duplicator
+  backwpup
+
+  w3-total-cache
+  wp-super-cache
+  litespeed-cache
+
+  nextgen-gallery
+  learnpress
+}"
 WP_ADMIN_USER="admin"
 WP_ADMIN_PASS="admin"
 WP_ADMIN_EMAIL="admin@test.local"
