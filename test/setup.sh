@@ -69,12 +69,21 @@ wpcli() {
 
 install_wpcli() {
   local container="$1"
+  echo "  installing dependencies..."
+  # jq is needed by wp-dump.sh on the target; install if missing
+  $COMPOSE_CMD exec -T "$container" bash -c \
+    'command -v jq &>/dev/null || (apt-get update -qq && apt-get install -y -qq jq)'
   echo "  installing WP-CLI..."
-  wpcli "$container" '
-    if ! command -v wp &>/dev/null; then
+  # Install phar then wrap in a script that forces the memory limit —
+  # WP_CLI_PHP_ARGS via env is not reliably picked up by all Compose versions.
+  $COMPOSE_CMD exec -T "$container" bash -c '
+    if ! command -v wp &>/dev/null 2>&1; then
       curl -sO https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
       chmod +x wp-cli.phar
-      mv wp-cli.phar /usr/local/bin/wp
+      mv wp-cli.phar /usr/local/bin/wp-cli.phar
+      printf '"'"'#!/bin/sh\nexec php -d memory_limit=512M /usr/local/bin/wp-cli.phar "$@"\n'"'"' \
+        > /usr/local/bin/wp
+      chmod +x /usr/local/bin/wp
     fi
   '
 }

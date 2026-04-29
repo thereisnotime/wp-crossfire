@@ -1,0 +1,87 @@
+# wp-crossfire test Justfile
+# Requires: just (https://github.com/casey/just)
+#
+# Usage:
+#   just up          # start all containers
+#   just setup       # install WP + plugins
+#   just dump        # export site inventories
+#   just test        # full pipeline: up + setup + dump + scan
+#   just scan        # run cross-match on existing dumps
+#   just lint        # shellcheck all scripts
+#   just down        # stop containers
+#   just clean       # stop + delete volumes + dumps
+
+COMPOSE := "podman compose"
+
+# Start containers (DB + all WP versions)
+up:
+    {{COMPOSE}} up -d
+
+# Start a single version: just up-one wp64
+up-one version:
+    {{COMPOSE}} up -d db {{version}}
+
+# Install WP core + plugins in all running containers
+setup:
+    ./setup.sh
+
+# Install in a specific container: just setup-one wplatest
+setup-one version:
+    SITES_FILTER={{version}} ./setup.sh
+
+# Export site inventories → dumps/
+dump:
+    ./dump-all.sh
+
+# Export from a specific container: just dump-one wplatest
+dump-one version:
+    ./dump-all.sh {{version}}
+
+# Run the vulnerability cross-match against all dumps
+scan: dump
+    cd .. && ./wp-vulns.sh --sites test/dumps/
+
+# Filter scan to a specific plugin: just grep woocommerce
+grep pattern: dump
+    cd .. && ./wp-vulns.sh --sites test/dumps/ --grep {{pattern}}
+
+# Interactive fzf browser of all vulnerability hits
+fzf: dump
+    cd .. && ./wp-vulns.sh --sites test/dumps/ --fzf
+
+# Force-refresh CVE database then scan
+refresh:
+    cd .. && ./wp-vulns.sh --fetch --sites test/dumps/
+
+# Full pipeline from scratch
+test: up setup dump scan
+
+# Run shellcheck on all scripts
+lint:
+    @echo "=== wp-dump.sh ==="
+    shellcheck ../wp-dump.sh
+    @echo "=== wp-vulns.sh ==="
+    shellcheck ../wp-vulns.sh
+    @echo "=== test/setup.sh ==="
+    shellcheck setup.sh
+    @echo "=== test/dump-all.sh ==="
+    shellcheck dump-all.sh
+    @echo "All clean."
+
+# Show running containers and their WP versions
+status:
+    @{{COMPOSE}} ps --format "table {{{{.Name}}\t{{{{.Status}}\t{{{{.Ports}}"
+
+# Show plugin list in a container: just plugins wplatest
+plugins version:
+    {{COMPOSE}} exec {{version}} wp --allow-root plugin list --format=table
+
+# Stop all containers
+down:
+    {{COMPOSE}} down
+
+# Stop + remove volumes and cached dumps
+clean:
+    {{COMPOSE}} down -v
+    rm -rf dumps/*.json
+    @echo "Volumes and dumps removed."

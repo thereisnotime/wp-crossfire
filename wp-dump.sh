@@ -18,6 +18,23 @@
 
 set -euo pipefail
 
+# ── prerequisite checks ───────────────────────────────────────────────────────
+require_tool() {
+  local name="$1" min="$2" actual="$3"
+  if [[ -z "$actual" ]]; then
+    echo '{"error":"'"$name"' is required but not found (need >= '"$min"')"}' >&2; exit 1
+  fi
+  if ! printf '%s\n%s\n' "$min" "$actual" | sort -V -C 2>/dev/null; then
+    echo '{"error":"'"$name"' '"$actual"' is too old (need >= '"$min"')"}' >&2; exit 1
+  fi
+}
+
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo '{"error":"bash '"${BASH_VERSION}"' is too old (need >= 4.0)"}' >&2; exit 1
+fi
+require_tool curl 7.0 "$(curl --version 2>/dev/null | head -1 | awk '{print $2}')"
+require_tool jq  1.6 "$(jq --version 2>/dev/null | sed 's/jq-//')"
+
 WP_PATH="."
 SITE_LABEL=""
 
@@ -38,6 +55,8 @@ for candidate in wp /usr/local/bin/wp /usr/bin/wp ~/wp-cli.phar; do
   fi
 done
 [[ -z "$WP" ]] && { echo '{"error":"wp-cli not found on this host"}'; exit 1; }
+wp_cli_ver=$("$WP" --allow-root cli version 2>/dev/null | awk '{print $NF}' || true)
+require_tool wp 2.0 "$wp_cli_ver"
 
 _wp() { "$WP" --path="$WP_PATH" --allow-root --no-color "$@" 2>/dev/null; }
 

@@ -2,18 +2,31 @@
 
 Cross-reference WordPress installs against vulnerability feeds. Built for managing large numbers of sites — dump inventory via WP-CLI, fetch CVEs from NVD, get a per-site vulnerability report.
 
+## Tested with
+
+| WordPress Version | Status | Notes |
+|-------------------|--------|-------|
+| 5.9 | ✅ | Tested in compose environment |
+| 6.0 | ✅ | Tested in compose environment |
+| 6.4 | ✅ | Tested in compose environment |
+| 6.6 | ✅ | Tested in compose environment |
+| latest | ✅ | Tested in compose environment |
+
+## Requirements
+
+| Tool | Minimum Version | Notes |
+|------|----------------|-------|
+| bash | 4.0 | |
+| curl | 7.x | |
+| jq | 1.6 | |
+| wp-cli | 2.0 | Target sites only |
+| fzf | 0.30 | Optional, for interactive browsing |
+
 ## How it works
 
 1. **Collect** — run `wp-dump.sh` on each site (SSH-pipeable, no installation required)
 2. **Fetch** — pull recent WordPress/plugin/theme CVEs from NVD
 3. **Match** — cross-reference installed versions against CVE ranges, get a report
-
-## Requirements
-
-- `bash`, `curl`, `jq`
-- `wp-cli` on the target sites (already present, nothing to install)
-- `fzf` (optional, for interactive browsing)
-- `WPSCAN_TOKEN` env var (optional, for WPScan enrichment — free at [wpscan.com/register](https://wpscan.com/register))
 
 ## Usage
 

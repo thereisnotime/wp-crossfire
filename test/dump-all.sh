@@ -35,9 +35,11 @@ for container in "${TARGET_CONTAINERS[@]}"; do
 
   out="$DUMPS_DIR/${container}.json"
 
-  # Copy wp-dump.sh into the container and run it
-  $COMPOSE_CMD exec -T "$container" bash -s -- --site "$container" \
-    < "$DUMP_SCRIPT" > "$out" 2>/dev/null
+  # Docker Compose v2+ doesn't reliably forward stdin with exec -T,
+  # so copy the script into the container and execute it there.
+  $COMPOSE_CMD cp "$DUMP_SCRIPT" "${container}:/tmp/wp-dump.sh" 2>/dev/null
+  $COMPOSE_CMD exec -T "$container" bash /tmp/wp-dump.sh --site "$container" \
+    > "$out" 2>/tmp/wp-dump-err-"$container".txt || true
 
   # Sanity check — valid JSON with a wp_version field
   if jq -e '.wp_version' "$out" &>/dev/null; then

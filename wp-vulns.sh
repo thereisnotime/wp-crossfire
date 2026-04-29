@@ -24,6 +24,23 @@
 
 set -euo pipefail
 
+# ── prerequisite checks ───────────────────────────────────────────────────────
+require_tool() {
+  local name="$1" min="$2" actual="$3"
+  if [[ -z "$actual" ]]; then
+    echo "Error: $name is required but not found (need >= $min)" >&2; exit 1
+  fi
+  if ! printf '%s\n%s\n' "$min" "$actual" | sort -V -C 2>/dev/null; then
+    echo "Error: $name $actual is too old (need >= $min)" >&2; exit 1
+  fi
+}
+
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "Error: bash ${BASH_VERSION} is too old (need >= 4.0)" >&2; exit 1
+fi
+require_tool curl 7.0 "$(curl --version 2>/dev/null | head -1 | awk '{print $2}')"
+require_tool jq  1.6 "$(jq --version 2>/dev/null | sed 's/jq-//')"
+
 DAYS=30
 DB_FILE="wp-vulndb.json"
 FORCE_FETCH=0
@@ -34,6 +51,8 @@ FZF_MODE=0
 OUTPUT="wp-report-$(date +%Y%m%d-%H%M%S).txt"
 WPSCAN_TOKEN="${WPSCAN_TOKEN:-}"
 NVD_BASE="https://services.nvd.nist.gov/rest/json/cves/2.0"
+# WPSCAN_BASE reserved for future WPScan enrichment
+# shellcheck disable=SC2034
 WPSCAN_BASE="https://wpscan.com/api/v3"
 
 TMPDIR_WORK=$(mktemp -d)
@@ -54,10 +73,6 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
-done
-
-for cmd in curl jq; do
-  command -v "$cmd" &>/dev/null || { echo "Error: $cmd is required"; exit 1; }
 done
 
 # ── version comparison (uses sort -V from GNU coreutils) ────────────────────
@@ -212,7 +227,6 @@ match_component() {
   local confirmed_file="${TMPDIR_WORK}/confirmed_${slug//\//_}.json"
   echo '[]' > "$confirmed_file"
 
-  local idx=0
   while IFS= read -r cve_json; do
     local affected_count
     affected_count=$(echo "$cve_json" | jq '.affected | length')
@@ -311,6 +325,7 @@ if [[ -n "$SITES_DIR" ]]; then
     total_hits=$(wc -l < "$FZF_TMP")
     echo "[*] $total_hits hit(s) — opening in fzf (type to filter, Ctrl-C to quit)"
     # fzf: columns are site | type | slug | ver | severity | score | CVE-ID | description
+    # shellcheck disable=SC2016
     fzf --delimiter=$'\t' \
         --header="SITE  TYPE  SLUG  VER  SEV  SCORE  CVE-ID  DESCRIPTION" \
         --preview='id=$(echo {} | cut -f7); jq -r --arg id "$id" '"'"'.[] | select(.id==$id) |
@@ -338,7 +353,7 @@ if [[ -n "$SITES_DIR" ]]; then
       plugin_count=$(jq '.plugins | length' "$dump_file")
       theme_count=$(jq '.themes  | length' "$dump_file")
 
-      site_critical=0; site_high=0; site_medium=0; site_low=0; site_hits=0
+      site_critical=0; site_high=0; site_medium=0; site_hits=0
       site_buf=""
 
       check_component() {
