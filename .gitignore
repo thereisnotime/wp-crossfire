@@ -1,0 +1,5 @@
+wp-vulndb.json
+wp-report-*.txt
+wp-vulns-*.json
+dumps/
+*.bak
