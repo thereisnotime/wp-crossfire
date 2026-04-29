@@ -104,6 +104,40 @@ WordPress core is matched only against CVEs where both CPE `vendor` and `product
 
 NVD has enrichment lag — newly published CVEs often lack CPE data for weeks. WPScan fills that gap for WordPress specifically.
 
+## Test environment
+
+A Podman Compose setup under `test/` spins up five WordPress versions with a shared MariaDB, installs WP-CLI and a representative plugin set, then exports dumps ready for cross-matching.
+
+```bash
+cd test/
+
+# Start all containers
+podman compose up -d
+
+# Install WP core + plugins in each (woocommerce, elementor, contact-form-7, yoast, wordfence)
+./setup.sh
+
+# Export inventory from every running container → test/dumps/*.json
+./dump-all.sh
+
+# Run the cross-match against the test dumps
+../wp-vulns.sh --sites dumps/
+```
+
+Versions included: **5.9 · 6.0 · 6.4 · 6.6 · latest**
+
+Ports: `8059 8060 8064 8066 8080` — each instance is accessible via browser too.
+
+Override the default plugin set:
+```bash
+PLUGINS="woocommerce akismet wpforms-lite" ./setup.sh
+```
+
+Dump a specific container only:
+```bash
+./dump-all.sh wp64 wplatest
+```
+
 ## Output
 
 - `wp-vulndb.json` — cached CVE database (auto-refreshed when stale)
