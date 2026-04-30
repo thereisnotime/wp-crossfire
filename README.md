@@ -4,13 +4,13 @@ Cross-reference WordPress installs against vulnerability feeds. Built for managi
 
 ## Tested with
 
-| WordPress Version | Status | Notes |
-|-------------------|--------|-------|
-| 5.9 | ✅ | Tested in compose environment |
-| 6.0 | ✅ | Tested in compose environment |
-| 6.4 | ✅ | Tested in compose environment |
-| 6.6 | ✅ | Tested in compose environment |
-| latest | ✅ | Tested in compose environment |
+| WordPress Version | Status | Plugins dumped | Notes |
+|-------------------|--------|----------------|-------|
+| 5.9 | ✅ | 16 | Some plugins require WP 6.x+ and won't install |
+| 6.0 | ✅ | 17 | Some plugins require WP 6.4+ and won't install |
+| 6.4 | ✅ | 20 | |
+| 6.6 | ✅ | 24 | Plugins requiring WP 6.7+ won't install |
+| latest (6.9) | ✅ | 31 | Full plugin set installs cleanly |
 
 ## Requirements
 
@@ -127,7 +127,7 @@ cd test/
 # Start all containers
 podman compose up -d
 
-# Install WP core + plugins in each (woocommerce, elementor, contact-form-7, yoast, wordfence)
+# Install WP core + ~30 plugins in each container (actual count varies by WP version)
 ./setup.sh
 
 # Export inventory from every running container → test/dumps/*.json
