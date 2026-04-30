@@ -1,5 +1,9 @@
 # wp-crossfire
 
+[![shellcheck](https://github.com/thereisnotime/wp-crossfire/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/thereisnotime/wp-crossfire/actions/workflows/shellcheck.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Bash](https://img.shields.io/badge/shell-bash-green.svg)](https://www.gnu.org/software/bash/)
+
 Cross-reference WordPress installs against vulnerability feeds. Built for managing large numbers of sites — dump inventory via WP-CLI, fetch CVEs from NVD, get a per-site vulnerability report.
 
 ## Tested with
