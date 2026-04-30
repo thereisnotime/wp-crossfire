@@ -12,7 +12,7 @@
 #   Or combined:       ./wp-vulns.sh --sites dumps/
 #
 # Options:
-#   --days  N        CVE lookback window (default: 30)
+#   --days  N        CVE refresh window (default: 30); on first run always fetches 5 years
 #   --db    FILE     cached vuln DB to use/write (default: wp-vulndb.json)
 #   --fetch          force re-fetch even if DB exists
 #   --sites DIR      directory of wp-dump.sh JSON files to match against
@@ -42,6 +42,7 @@ require_tool curl 7.0 "$(curl --version 2>/dev/null | head -1 | awk '{print $2}'
 require_tool jq  1.6 "$(jq --version 2>/dev/null | sed 's/jq-//')"
 
 DAYS=30
+FULL_HISTORY_DAYS=1825  # used on first run (no existing DB)
 DB_FILE="wp-vulndb.json"
 FORCE_FETCH=0
 SITES_DIR=""
@@ -102,31 +103,58 @@ version_is_affected() {
 }
 
 # ── NVD fetch ────────────────────────────────────────────────────────────────
-fetch_nvd() {
+# Fetches all CVEs for a given lookback window, paginating through NVD's
+# 2000-result-per-page limit. Returns path to a raw merged vulnerabilities
+# JSON array (not yet normalized).
+fetch_nvd_raw() {
+  local days="$1"
   local start_date end_date
-  start_date=$(date -u -d "-${DAYS} days" +%Y-%m-%dT00:00:00.000)
+  start_date=$(date -u -d "-${days} days" +%Y-%m-%dT00:00:00.000)
   end_date=$(date -u +%Y-%m-%dT23:59:59.999)
-  local url="${NVD_BASE}?keywordSearch=wordpress&pubStartDate=${start_date}&pubEndDate=${end_date}&resultsPerPage=2000"
-  local raw="${TMPDIR_WORK}/nvd_raw.json"
-  local attempt=1 max=4 delay=10 http_code
 
-  echo "[*] Fetching WordPress CVEs from NVD (last ${DAYS} days)..."
-  while [[ $attempt -le $max ]]; do
-    http_code=$(curl -s -o "$raw" -w "%{http_code}" --max-time 45 "$url")
-    if [[ "$http_code" == "200" ]]; then break; fi
-    echo "  NVD returned $http_code, retrying in ${delay}s (attempt $attempt/$max)..."
-    sleep "$delay"; delay=$((delay * 2)); attempt=$((attempt + 1))
+  local merged="${TMPDIR_WORK}/nvd_merged.json"
+  echo '[]' > "$merged"
+
+  local start_index=0 total_results=1 page=1 http_code attempt delay raw
+
+  echo "[*] Fetching WordPress CVEs from NVD (last ${days} days)..."
+
+  while [[ "$start_index" -lt "$total_results" ]]; do
+    raw="${TMPDIR_WORK}/nvd_page_${page}.json"
+    local url="${NVD_BASE}?keywordSearch=wordpress&pubStartDate=${start_date}&pubEndDate=${end_date}&resultsPerPage=2000&startIndex=${start_index}"
+
+    attempt=1; delay=10
+    while [[ $attempt -le 4 ]]; do
+      http_code=$(curl -s -o "$raw" -w "%{http_code}" --max-time 60 "$url")
+      [[ "$http_code" == "200" ]] && break
+      echo "  NVD returned $http_code, retrying in ${delay}s (attempt $attempt/4)..."
+      sleep "$delay"; delay=$((delay * 2)); attempt=$((attempt + 1))
+    done
+    [[ "$http_code" != "200" ]] && { echo "Error: NVD fetch failed (HTTP $http_code)"; exit 1; }
+
+    total_results=$(jq '.totalResults' "$raw")
+    local page_count
+    page_count=$(jq '.vulnerabilities | length' "$raw")
+    echo "  page $page: ${page_count} CVEs  (${start_index}–$((start_index + page_count - 1)) of ${total_results})"
+
+    jq -s '.[0] + .[1].vulnerabilities' "$merged" "$raw" > "${merged}.tmp" \
+      && mv "${merged}.tmp" "$merged"
+
+    start_index=$((start_index + 2000))
+    page=$((page + 1))
+
+    # NVD rate limit: 5 req/30s without API key — sleep between pages
+    [[ "$start_index" -lt "$total_results" ]] && sleep 7
   done
-  [[ "$http_code" != "200" ]] && { echo "Error: NVD fetch failed"; exit 1; }
 
-  local count
-  count=$(jq '.vulnerabilities | length' "$raw")
-  echo "[*] Got ${count} CVEs from NVD"
+  echo "$merged"
+}
 
-  # Normalize: flat structure with structured CPE version ranges
-  echo "[*] Normalizing..."
+normalize_nvd() {
+  local raw_merged="$1" out="$2"
+  echo "[*] Normalizing $(jq 'length' "$raw_merged") CVEs..."
   jq '[
-    .vulnerabilities[]
+    .[]
     | .cve as $cve
     | {
         id:          $cve.id,
@@ -161,21 +189,33 @@ fetch_nvd() {
             }
         ]
       }
-  ] | sort_by(.published) | reverse' "$raw" > "$DB_FILE"
-
-  echo "[*] Saved vuln DB to $DB_FILE"
+  ] | sort_by(.published) | reverse' "$raw_merged" > "$out"
 }
 
-# Fetch if DB is missing, stale (older than $DAYS days), or --fetch forced
-if [[ "$FORCE_FETCH" -eq 1 ]] || [[ ! -f "$DB_FILE" ]]; then
-  fetch_nvd
+# First run: fetch full 5-year history.
+# Subsequent refreshes: fetch --days window and merge into existing DB so
+# history is never lost.
+if [[ ! -f "$DB_FILE" ]]; then
+  echo "[*] No DB found — fetching full 5-year history (this takes a moment)..."
+  raw=$(fetch_nvd_raw "$FULL_HISTORY_DAYS")
+  normalize_nvd "$raw" "$DB_FILE"
+  echo "[*] Saved $(jq 'length' "$DB_FILE") CVEs to $DB_FILE"
 else
   db_age_days=$(( ( $(date +%s) - $(date +%s -r "$DB_FILE") ) / 86400 ))
-  if [[ "$db_age_days" -ge "$DAYS" ]]; then
-    echo "[*] DB is ${db_age_days}d old, re-fetching..."
-    fetch_nvd
+  if [[ "$FORCE_FETCH" -eq 1 ]] || [[ "$db_age_days" -ge "$DAYS" ]]; then
+    [[ "$FORCE_FETCH" -eq 1 ]] \
+      && echo "[*] Force-fetching last ${DAYS} days from NVD..." \
+      || echo "[*] DB is ${db_age_days}d old — refreshing last ${DAYS} days..."
+    raw=$(fetch_nvd_raw "$DAYS")
+    new_normalized="${TMPDIR_WORK}/nvd_new_normalized.json"
+    normalize_nvd "$raw" "$new_normalized"
+    # Merge new CVEs into existing DB, deduplicate by id, keep newest version
+    jq -s '(.[0] + .[1]) | unique_by(.id) | sort_by(.published) | reverse' \
+      "$DB_FILE" "$new_normalized" > "${DB_FILE}.tmp" \
+      && mv "${DB_FILE}.tmp" "$DB_FILE"
+    echo "[*] DB updated: $(jq 'length' "$DB_FILE") CVEs total"
   else
-    echo "[*] Using cached DB: $DB_FILE (${db_age_days}d old)"
+    echo "[*] Using cached DB: $DB_FILE (${db_age_days}d old, refreshes after ${DAYS}d)"
   fi
 fi
 
@@ -342,7 +382,7 @@ if [[ -n "$SITES_DIR" ]]; then
   run_report() {
     echo "WordPress Vulnerability Report"
     echo "Generated: $(date -u)"
-    echo "Sites: ${#dump_files[@]}   CVE window: last ${DAYS} days"
+    echo "Sites: ${#dump_files[@]}   CVE DB: $(jq 'length' "$DB_FILE") entries  Refresh window: ${DAYS}d"
     [[ -n "$GREP_PATTERN" ]] && echo "Filter: $GREP_PATTERN"
     echo ""
 
