@@ -2,9 +2,25 @@
 
 [![shellcheck](https://github.com/thereisnotime/wp-crossfire/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/thereisnotime/wp-crossfire/actions/workflows/shellcheck.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Bash](https://img.shields.io/badge/shell-bash-green.svg)](https://www.gnu.org/software/bash/)
+[![Bash](https://img.shields.io/badge/shell-bash%204.0+-green.svg)](https://www.gnu.org/software/bash/)
+[![CVE source](https://img.shields.io/badge/CVE_source-NVD-red.svg)](https://nvd.nist.gov)
+[![WPScan](https://img.shields.io/badge/enrichment-WPScan-orange.svg)](https://wpscan.com/api)
+[![GitHub last commit](https://img.shields.io/github/last-commit/thereisnotime/wp-crossfire)](https://github.com/thereisnotime/wp-crossfire/commits/main)
+[![GitHub repo size](https://img.shields.io/github/repo-size/thereisnotime/wp-crossfire)](https://github.com/thereisnotime/wp-crossfire)
 
 Cross-reference WordPress installs against vulnerability feeds. Built for managing large numbers of sites — dump inventory via WP-CLI, fetch CVEs from NVD, get a per-site vulnerability report.
+
+## Quick start
+
+```bash
+# 1. Dump a site inventory (runs on the target, nothing to install)
+ssh user@mysite.com 'bash -s' < wp-dump.sh > dumps/mysite.json
+
+# 2. Cross-match against CVEs
+./wp-vulns.sh --sites dumps/
+```
+
+That's it. CVE database is fetched automatically on first run and cached locally.
 
 ## Tested with
 
@@ -89,6 +105,32 @@ Dump format:
 ./wp-vulns.sh --days 90 --sites dumps/
 ```
 
+Sample output:
+
+```
+═══════════════════════════════════════════════════════
+mysite.com  WP 6.4.2  (20 plugins · 3 themes)
+═══════════════════════════════════════════════════════
+  [CRITICAL/9.8] CVE-2024-1234  (woocommerce 8.1.0)
+  WooCommerce is vulnerable to SQL Injection via the 'order_by' parameter...
+
+  [HIGH/8.8] CVE-2024-5678  (elementor 3.18.0)
+  Elementor Page Builder is vulnerable to Stored XSS via the url parameter...
+
+  [MEDIUM/5.3] CVE-2024-9012  (wordpress 6.4.2)
+  WordPress core is vulnerable to path traversal in the Filesystem API...
+
+  Site total: 3 CVE(s) — CRITICAL:1 HIGH:1 MEDIUM:1
+
+═══════════════════════════════════════════════════════
+SUMMARY
+═══════════════════════════════════════════════════════
+  mysite.com        CRIT:1 HIGH:1 MED:1 TOTAL:3
+  staging.mysite    CRIT:0 HIGH:2 MED:4 TOTAL:6
+
+[*] Report saved to wp-report-20260430-120802.txt
+```
+
 ### 3. Other options
 
 ```bash
@@ -159,3 +201,11 @@ Dump a specific container only:
 
 - `wp-vulndb.json` — cached CVE database (auto-refreshed when stale)
 - `wp-report-TIMESTAMP.txt` — full report, saved alongside console output
+
+## Known limitations
+
+- **NVD enrichment lag** — newly published CVEs often lack CPE data for days or weeks after disclosure. During that window, matches fall back to description substring search with no version filtering, so hits are conservative (may include patched versions).
+- **Description fallback is noisy** — a CVE mentioning "woocommerce" in its description will match any site running WooCommerce, regardless of version. These are clearly marked in the report.
+- **No CVSS v4 yet** — NVD is still rolling out CVSS v4 scores; the script uses CVSS v3.1 where available, falling back to v2.
+- **Slug matching is approximate** — CPE `product` fields are not always identical to WordPress.org slugs. Uncommon plugins may be missed or produce false positives.
+- **Inactive plugins are included** — the dump captures all installed plugins regardless of active status. A deactivated plugin is still a risk if it's on disk.
