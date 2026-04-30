@@ -60,23 +60,23 @@ require_tool wp 2.0 "$wp_cli_ver"
 
 _wp() { "$WP" --path="$WP_PATH" --allow-root --no-color "$@" 2>/dev/null; }
 
-wp_version=$(_wp core version 2>/dev/null || echo "unknown")
-site_url=$(_wp option get siteurl 2>/dev/null || echo "")
+wp_version=$(_wp core version --skip-plugins --skip-themes 2>/dev/null || echo "unknown")
+site_url=$(_wp option get siteurl --skip-plugins --skip-themes 2>/dev/null || echo "")
 [[ -z "$SITE_LABEL" ]] && SITE_LABEL="${site_url:-$(hostname 2>/dev/null || echo unknown)}"
 
-plugins=$(_wp plugin list --fields=name,version,status --format=json 2>/dev/null || echo '[]')
-themes=$(_wp theme list  --fields=name,version,status --format=json 2>/dev/null || echo '[]')
+plugins=$(_wp plugin list --skip-plugins --skip-themes --fields=name,version,status --format=json 2>/dev/null || echo '[]')
+themes=$(_wp theme list  --skip-plugins --skip-themes --fields=name,version,status --format=json 2>/dev/null || echo '[]')
 
 jq -n \
   --arg  site     "$site_url" \
-  --arg  label    "$SITE_LABEL" \
+  --arg  lbl      "$SITE_LABEL" \
   --arg  wp_ver   "$wp_version" \
   --arg  dumped   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson plugins "$plugins" \
   --argjson themes  "$themes" \
   '{
     site:       $site,
-    label:      $label,
+    "label":    $lbl,
     wp_version: $wp_ver,
     dumped_at:  $dumped,
     plugins:    $plugins,
