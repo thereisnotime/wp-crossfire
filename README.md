@@ -20,7 +20,7 @@ ssh user@mysite.com 'bash -s' < wp-dump.sh > dumps/mysite.json
 ./wp-vulns.sh --sites dumps/
 ```
 
-That's it. CVE database is fetched automatically on first run and cached locally.
+That's it. On first run, the full 5-year CVE history is fetched from NVD and cached locally. Subsequent runs refresh only the last 30 days and merge into the existing DB, so history is never lost.
 
 ## Tested with
 
@@ -196,6 +196,18 @@ Dump a specific container only:
 ```bash
 ./dump-all.sh wp64 wplatest
 ```
+
+## CVE database caching
+
+| Run | Behaviour |
+|-----|-----------|
+| First run (no DB) | Fetches full 5-year history from NVD, paginating through results |
+| DB exists, < 30 days old | Uses cached DB as-is |
+| DB exists, ≥ 30 days old | Fetches last 30 days, merges into existing DB (no history lost) |
+| `--fetch` | Forces a refresh of the last `--days` window and merges |
+| `--fetch --days 1825` | Full re-fetch of 5-year history |
+
+NVD paginates at 2000 results per request. The script handles this automatically with a short sleep between pages to stay within the rate limit.
 
 ## Output
 
